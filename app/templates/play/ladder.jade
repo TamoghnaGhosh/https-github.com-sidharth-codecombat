@@ -23,6 +23,7 @@ block content
           for session in team.leaderboard.topPlayers.models
             - var myRow = session.get('creator') == me.id
             tr(class=myRow ? "success" : "")
+              td= session.get('rank')
               td.score-cell= session.get('totalScore').toFixed(2)
               td= session.get('creatorName')
               td

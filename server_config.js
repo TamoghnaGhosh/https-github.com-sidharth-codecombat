@@ -39,6 +39,11 @@ config.queue.simulationQueueName = "simulationQueue";
 config.mongoQueue = {};
 config.mongoQueue.queueDatabaseName = "coco_queue";
 
+config.redis = {}
+config.redis.host = process.env.COCO_REDIS_HOST || '';
+config.redis.password = process.env.COCO_REDIS_PASSWORD || '';
+config.redis.port = process.env.COCO_REDIS_PORT || '';
+
 config.salt = process.env.COCO_SALT || 'pepper';
 config.cookie_secret = process.env.COCO_COOKIE_SECRET || 'chips ahoy';
 

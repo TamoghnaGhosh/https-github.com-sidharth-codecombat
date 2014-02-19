@@ -24,7 +24,7 @@ module.exports = class LadderView extends RootView
     'click #simulate-button': 'onSimulateButtonClick'
 
   onSimulateButtonClick: (e) ->
-    submitIDs = _.pluck @leaderboards[@teams[0]].topPlayers.models, "id"
+    submitIDs = _.pluck @leaderboards[@teams[1]].topPlayers.models, "id"
     for ID in submitIDs
       $.ajax
         url: '/queue/scoring'

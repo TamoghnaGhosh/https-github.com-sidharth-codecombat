@@ -3,6 +3,9 @@ Session = require('./sessions/LevelSession')
 SessionHandler = require('./sessions/level_session_handler')
 Feedback = require('./feedbacks/LevelFeedback')
 Handler = require('../commons/Handler')
+redis = require '../commons/redis'
+log = require 'winston'
+async = require 'async'
 mongoose = require('mongoose')
 
 LevelHandler = class LevelHandler extends Handler
@@ -129,6 +132,7 @@ LevelHandler = class LevelHandler extends Handler
       'totalScore'
       'creatorName'
       'creator'
+      'team'
     ]
 
     query = Session
@@ -137,10 +141,18 @@ LevelHandler = class LevelHandler extends Handler
       .sort(sortParameters)
       .select(selectProperties.join ' ')
 
-    query.exec (err, resultSessions) =>
+    query.lean().exec (err, resultSessions) =>
       return @sendDatabaseError(res, err) if err
       resultSessions ?= []
-      @sendSuccess res, resultSessions
+      start = process.hrtime()
+      appendRanksToResultSessions resultSessions, (err, result) =>
+        timeElapsed = process.hrtime(start)
+
+        timeElapsed[1] = timeElapsed[1] / 1000000
+        timeElapsed[0] = timeElapsed[0] * 1000
+        log.info "Redis functions took " + (timeElapsed[0] + timeElapsed[1]) + " milliseconds."
+        if err then return @sendDatabaseError(res, err)
+        @sendSuccess res, resultSessions
 
   validateLeaderboardRequestParameters: (req) ->
     req.query.order = parseInt(req.query.order) ? -1
@@ -159,5 +171,32 @@ LevelHandler = class LevelHandler extends Handler
         return @sendDatabaseError(res, err) if err
         return @sendNotFoundError(res) unless doc?
         @sendSuccess(res, doc)
+
+scoringSortedSets = {}
+scoringSortedSets["humans"] = redis.generateSortedSet 'scores_humans'
+scoringSortedSets["ogres"] = redis.generateSortedSet 'scores_ogres'
+
+
+appendRanksToResultSessions = (resultSessions, callback) ->
+  #TODO: Optimize to use pipelining
+  async.each resultSessions, insertMissingRankingsIntoSetIfNecessary, (err) ->
+    if err? then callback err
+    async.each resultSessions, appendRankToSession, callback
+
+
+insertMissingRankingsIntoSetIfNecessary =  (session, callback) ->
+  scoringSortedSets[session.team].checkIfMemberExists session._id, (err, memberExists) ->
+    if memberExists then return callback null
+    scoringSortedSets[session.team].addOrChangeMember session.totalScore, session._id, callback
+
+appendRankToSession = (session, callback) ->
+  scoringSortedSets[session.team].getRankOfMember session._id, (error, result) ->
+    unless result? then error = "error":"No rank was returned."
+    if error then return callback error
+    session.rank = result + 1
+    callback error
+
+
+
 
 module.exports = new LevelHandler()

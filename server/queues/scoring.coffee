@@ -7,12 +7,18 @@ aws = require 'aws-sdk'
 db = require './../routes/db'
 mongoose = require 'mongoose'
 queues = require '../commons/queue'
+redis = require '../commons/redis'
 LevelSession = require '../levels/sessions/LevelSession'
 TaskLog = require './task/ScoringTask'
 bayes = new (require 'bayesian-battle')()
 
+
 scoringTaskQueue = undefined
 scoringTaskTimeoutInSeconds = 400
+
+scoringSortedSets =
+  humans: redis.generateSortedSet 'scores_humans'
+  ogres: redis.generateSortedSet 'scores_ogres'
 
 
 module.exports.setup = (app) -> connectToScoringQueue()
@@ -49,16 +55,16 @@ module.exports.dispatchTaskToConsumer = (req, res) ->
 
   scoringTaskQueue.receiveMessage (err, message) ->
     if err? or messageIsInvalid(message) then return errors.gatewayTimeoutError res, "Queue Receive Error:#{err}"
-    console.log "Received Message"
+
     messageBody = parseTaskQueueMessage req, res, message
     return unless messageBody?
 
     constructTaskObject messageBody, (taskConstructionError, taskObject) ->
       if taskConstructionError? then return errors.serverError res, "There was an error constructing the scoring task"
-      console.log "Constructed task body"
+
       message.changeMessageVisibilityTimeout scoringTaskTimeoutInSeconds, (err) ->
         if err? then return errors.serverError res, "There was an error changing the message visibility timeout."
-        console.log "Changed visibility timeout"
+
         constructTaskLogObject getUserIDFromRequest(req),message.getReceiptHandle(), (taskLogError, taskLogObject) ->
           if taskLogError? then return errors.serverError res, "There was an error creating the task log object."
 
@@ -88,12 +94,17 @@ module.exports.processTaskResult = (req, res) ->
         updateSessions clientResponseObject, (updateError, newScoreArray) ->
           if updateError? then return errors.serverError res, "There was an error updating the scores.#{updateError}"
 
+
+
           newScoresObject = _.indexBy newScoreArray, 'id'
 
           addMatchToSessions clientResponseObject, newScoresObject, (err, data) ->
             if err? then return errors.serverError res, "There was an error updating the sessions with the match! #{JSON.stringify err}"
             console.log "Sending response object"
             sendResponseObject req, res, {"message":"The scores were updated successfully!"}
+
+updateRedis = (newScoreArray, callback) ->
+
 
 
 addMatchToSessions = (clientResponseObject, newScoreObject, callback) ->
