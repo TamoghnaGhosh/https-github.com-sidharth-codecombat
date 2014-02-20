@@ -21,7 +21,26 @@ class Redis
   generateSortedSet: (key) ->
     new RedisSortedSet @client, key
 
+  generateHashClient: ->
+    new RedisHashClient @client
+
 module.exports = new Redis()
+
+class RedisHashClient
+  constructor: (@client) ->
+
+  fieldExists: (key, field, callback) ->
+    @client.hexists key, field, (err, result) ->
+      if err? then return callback err, result
+      callback err, Boolean(result)
+
+  getField: (key, field, callback) ->
+    @client.hget key, field, callback
+
+  setField: (key, field, value, callback) ->
+    @client.hset key, field, value, callback
+
+
 
 class RedisSortedSet
   constructor: (@client, @key) ->
@@ -31,7 +50,6 @@ class RedisSortedSet
     @client.zscore @key, member, (error, score) -> callback error, Boolean(score)
 
   addOrChangeMember: (score, member, callback) ->
-    log.info "Adding member #{member}"
     @client.zadd @key, score, member, callback
 
   getRankOfMember: (member, callback) ->
@@ -63,17 +81,17 @@ class RedisSortedSet
     @client.zcount @key, minScore, maxScore, callback
 
   getMembersInRankRange: (minRank, maxRank, callback) ->
-    @client.zrange @key, minRank, maxRank, callback
+    @client.zrevrange @key, minRank, maxRank, callback
 
   getMembersInRankRangeWithScore: (minRank, maxRank, callback) ->
-    @client.zrange @key, minRank, maxRank, "WITHSCORES", (error, resultList) =>
+    @client.zrevrange @key, minRank, maxRank, "WITHSCORES", (error, resultList) =>
       @parseResultListAndExecuteCallback error, resultList, callback
 
   getMembersInScoreRange: (minScore, maxScore, callback) ->
-    @client.zrangebyscore @key, minScore, maxScore, callback
+    @client.zrevrangebyscore @key, minScore, maxScore, callback
 
   getMembersInScoreRangeWithScore: (minScore, maxScore, callback) ->
-    @client.zrangebyscore @key, minScore, maxScore, "WITHSCORES", (error, resultList) =>
+    @client.zrevrangebyscore @key, minScore, maxScore, "WITHSCORES", (error, resultList) =>
       @parseResultListAndExecuteCallback error, resultList, callback
 
   parseResultListAndExecuteCallback: (error, resultList, callback) ->

@@ -1,4 +1,5 @@
 Level = require('./Level')
+User = require('../users/User')
 Session = require('./sessions/LevelSession')
 SessionHandler = require('./sessions/level_session_handler')
 Feedback = require('./feedbacks/LevelFeedback')
@@ -144,15 +145,18 @@ LevelHandler = class LevelHandler extends Handler
     query.lean().exec (err, resultSessions) =>
       return @sendDatabaseError(res, err) if err
       resultSessions ?= []
-      start = process.hrtime()
       appendRanksToResultSessions resultSessions, (err, result) =>
-        timeElapsed = process.hrtime(start)
+        if err? then return @sendDatabaseError(res, err)
+        start = process.hrtime()
+        appendCreatorNamesToSessions resultSessions, (err, result) =>
+          if err? then return @sendDatabaseError(res, err)
+          timeElapsed = process.hrtime(start)
 
-        timeElapsed[1] = timeElapsed[1] / 1000000
-        timeElapsed[0] = timeElapsed[0] * 1000
-        log.info "Redis functions took " + (timeElapsed[0] + timeElapsed[1]) + " milliseconds."
-        if err then return @sendDatabaseError(res, err)
-        @sendSuccess res, resultSessions
+          timeElapsed[1] = timeElapsed[1] / 1000000
+          timeElapsed[0] = timeElapsed[0] * 1000
+          log.info "Redis functions took " + (timeElapsed[0] + timeElapsed[1]) + " milliseconds."
+
+          @sendSuccess res, resultSessions
 
   validateLeaderboardRequestParameters: (req) ->
     req.query.order = parseInt(req.query.order) ? -1
@@ -176,6 +180,31 @@ scoringSortedSets = {}
 scoringSortedSets["humans"] = redis.generateSortedSet 'scores_humans'
 scoringSortedSets["ogres"] = redis.generateSortedSet 'scores_ogres'
 
+sessionHashClient = redis.generateHashClient()
+
+appendCreatorNamesToSessions = (sessions, callback) ->
+  async.each sessions, appendCreatorNameToSession, callback
+
+appendCreatorNameToSession = (session, callback) ->
+  sessionHashClient.getField session._id, "name", (err, name) ->
+    if err? then return callback err, name
+
+    unless name
+      #fetch the username and put it in the cache
+      query = User
+      .findOne({"_id":session.creator})
+      .select('name')
+      query.lean().exec (err, user) =>
+        unless user.name then user.name = "Anonymous"
+        sessionHashClient.setField session._id, "name", user.name, (err, result) ->
+          session.creatorName = user.name
+          callback null
+    else
+      session.creatorName = name
+      callback null
+
+
+
 
 appendRanksToResultSessions = (resultSessions, callback) ->
   #TODO: Optimize to use pipelining
@@ -195,6 +224,7 @@ appendRankToSession = (session, callback) ->
     if error then return callback error
     session.rank = result + 1
     callback error
+
 
 
 

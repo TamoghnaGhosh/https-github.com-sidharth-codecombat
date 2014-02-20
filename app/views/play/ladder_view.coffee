@@ -5,6 +5,8 @@ CocoCollection = require 'models/CocoCollection'
 LeaderboardCollection  = require 'collections/LeaderboardCollection'
 {hslToHex} = require 'lib/utils'
 
+
+
 HIGHEST_SCORE = 1000000
 
 class LevelSessionsCollection extends CocoCollection
@@ -130,7 +132,8 @@ class LeaderboardData
         @fetchNames()
     else
       @loaded = true
-      @fetchNames()
+      @trigger 'sync'
+      #@fetchNames()
       
   fetchNames: ->
     sessionCollections = [@topPlayers, @playersAbove, @playersBelow]
